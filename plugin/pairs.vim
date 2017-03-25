@@ -30,8 +30,8 @@ endif
 let s:undo  = "\<C-G>u"
 let s:abbr  = "\<C-]>"
 
-let s:class_ins = '\<\(struct\|class\)\>[^{]*$'
-let s:class_del = '\<\(struct\|class\)\>'
+let s:class_ins = '\<\(struct\|class\|enum\)\>[^{]*$'
+let s:class_del = '\<\(struct\|class\|enum\)\>'
 " }}}
 
 function! s:GetChar(offset, ...) " {{{
