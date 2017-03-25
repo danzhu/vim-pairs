@@ -30,7 +30,7 @@ endif
 let s:undo  = "\<C-G>u"
 let s:abbr  = "\<C-]>"
 
-let s:class_ins = '\<\(struct\|class\)\>[^{]\+$'
+let s:class_ins = '\<\(struct\|class\)\>[^{]*$'
 let s:class_del = '\<\(struct\|class\)\>'
 " }}}
 
@@ -90,21 +90,22 @@ function! s:Open(key) " {{{
         " skip inside strings
     elseif right =~ '\h' || has_key(b:pairs, right)
         " don't complete before identifiers / open pairs
-    elseif &filetype == 'markdown' && s:InSyntax('^markdownHighlight') &&
-                \ a:key == '<'
-        " skip inside fenced code block
-    elseif &filetype == 'html' && s:InSyntax('^javaScript$') && a:key == '<'
-        " skip inside js
     elseif s:GetChar(-1) == '\' && s:GetChar(-2) != '\'
         " backslash pairs
         let key = a:key . '\' . b:pairs[a:key] . repeat(s:left, 2)
         call add(b:pendings, b:pairs[a:key])
     elseif g:pairs_class_semicolon && &filetype =~ '^\(c\|cpp\)$' &&
                 \ (getline('.') =~ s:class_ins ||
-                \ getline(line('.') - 1) =~ s:class_ins)
+                \ (getline(line('.') - 1) =~ s:class_ins &&
+                \ getline('.') =~ '^\w*[^{]*$'))
         " auto insert semicolon for struct / class
         let key = a:key . b:pairs[a:key] . ';' . repeat(s:left, 2)
         call add(b:pendings, b:pairs[a:key])
+    elseif &filetype == 'markdown' && s:InSyntax('^markdownHighlight') &&
+                \ a:key == '<'
+        " skip inside fenced code block
+    elseif &filetype == 'html' && s:InSyntax('^javaScript$') && a:key == '<'
+        " skip inside js
     else
         " auto complete pair
         let key = a:key . b:pairs[a:key] . s:left
@@ -282,6 +283,7 @@ function! s:Backspace() " {{{
     if s:InPair(0, 1)
         let key = "\<BS>\<Del>"
 
+        " FIXME: this sometimes delete the wrong stuff
         if g:pairs_class_semicolon && s:GetChar(1) == ';' &&
                     \ (getline('.') =~ s:class_del ||
                     \ getline(line('.') - 1) =~ s:class_del)
