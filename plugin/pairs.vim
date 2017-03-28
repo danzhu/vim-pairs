@@ -17,6 +17,10 @@ endif
 if !exists('g:pairs_latex_interval')
     let g:pairs_latex_interval = 1
 endif
+
+if !exists('g:pairs_include_completion')
+    let g:pairs_include_completion = 1
+endif
 " }}}
 
 " Constants {{{
@@ -32,6 +36,7 @@ let s:abbr  = "\<C-]>"
 
 let s:class_ins = '\<\(struct\|class\|enum\)\>[^{]*$'
 let s:class_del = '\<\(struct\|class\|enum\)\>'
+let s:cpp = '^\(c\|cpp\)$'
 " }}}
 
 function! s:GetChar(offset, ...) " {{{
@@ -94,13 +99,21 @@ function! s:Open(key) " {{{
         " backslash pairs
         let key = a:key . '\' . b:pairs[a:key] . repeat(s:left, 2)
         call add(b:pendings, b:pairs[a:key])
-    elseif g:pairs_class_semicolon && &filetype =~ '^\(c\|cpp\)$' &&
+    elseif g:pairs_class_semicolon && &filetype =~ s:cpp &&
                 \ (getline('.') =~ s:class_ins ||
                 \ (getline(line('.') - 1) =~ s:class_ins &&
-                \ getline('.') =~ '^\w*[^{]*$'))
+                \ getline('.') =~ '^\s*[^{]*$'))
         " auto insert semicolon for struct / class
         let key = a:key . b:pairs[a:key] . ';' . repeat(s:left, 2)
         call add(b:pendings, b:pairs[a:key])
+    elseif &filetype =~ s:cpp && a:key == '<'
+        " if on an #include line
+        if g:pairs_include_completion && getline('.') =~ '^\s*#include\s*$'
+            " complete angle brackets
+            let key = '<>' . s:left
+            call add(b:pendings, '>')
+        endif
+        " else, don't complete
     elseif &filetype == 'markdown' && s:InSyntax('^markdownHighlight') &&
                 \ a:key == '<'
         " skip inside fenced code block
@@ -129,6 +142,12 @@ function! s:Close(key) " {{{
                 \ s:InSyntax('^texMathZone') && a:key =~ ')\|]' &&
                 \ b:pendings[-1] =~ ')\|]'
         " in math mode, parentheses and brackets are often paired
+        let key = "\<Del>" . a:key
+        call remove(b:pendings, -1)
+    elseif g:pairs_include_completion && &filetype =~ s:cpp &&
+                \ a:key == '>' && getline('.') =~ '^\s*#include' &&
+                \ right == '>'
+        " close #include
         let key = "\<Del>" . a:key
         call remove(b:pendings, -1)
     elseif b:pendings[-1] != a:key
@@ -280,7 +299,10 @@ endfunction " }}}
 function! s:Backspace() " {{{
     let key = "\<BS>"
 
-    if s:InPair(0, 1)
+    if s:InPair(0, 1) ||
+                \ g:pairs_include_completion && &filetype =~ s:cpp &&
+                \ getline('.') =~ '^\s*#include\s*<>\s*$' &&
+                \ s:GetChar(-1, 2) == '<>'
         let key = "\<BS>\<Del>"
 
         " FIXME: this sometimes delete the wrong stuff
@@ -363,6 +385,11 @@ function! s:Remap() " {{{
         let key = escape(item, '"')
         exe 'inoremap <buffer> <expr> ' . item . ' <SID>Quote("' . key . '")'
     endfor
+
+    if g:pairs_include_completion && &filetype =~ s:cpp
+        inoremap <buffer> <expr> < <SID>Open("<")
+        inoremap <buffer> <expr> > <SID>Close(">")
+    endif
 
     call s:Clear()
 endfunction " }}}
