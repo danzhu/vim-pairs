@@ -303,32 +303,30 @@ function! s:Backspace() " {{{
                 \ g:pairs_include_completion && &filetype =~ s:cpp &&
                 \ getline('.') =~ '^\s*#include\s*<>\s*$' &&
                 \ s:GetChar(-1, 2) == '<>'
-        let key = "\<BS>\<Del>"
-
-        " FIXME: this sometimes delete the wrong stuff
-        if g:pairs_class_semicolon && s:GetChar(1) == ';' &&
-                    \ (getline('.') =~ s:class_del ||
-                    \ getline(line('.') - 1) =~ s:class_del)
-            " delete semicolon for class
-            let key .= "\<Del>"
-        endif
-
-        " remove pending if available,
-        " we don't require this so that it works even after InsertLeave
         if !empty(b:pendings) && b:pendings[-1] == s:GetChar(0)
+            let key = "\<BS>\<Del>"
+
+            " FIXME: this sometimes delete the wrong stuff
+            if g:pairs_class_semicolon && s:GetChar(1) == ';' &&
+                        \ (getline('.') =~ s:class_del ||
+                        \ getline(line('.') - 1) =~ s:class_del)
+                " delete semicolon for class
+                let key .= "\<Del>"
+            endif
+
+            call remove(b:pendings, -1)
+        endif
+    elseif s:InPair(0, 0, 1)
+        if !empty(b:pendings) && b:pendings[-1] == s:GetChar(0)
+            " inside backslash pair, delete pair and right backslash
+            let key = "\<BS>" . repeat("\<Del>", 2)
+
             call remove(b:pendings, -1)
         endif
     elseif s:GetChar(-1, 2) == '  ' &&
                 \ (s:InPair(1, 1) || s:InPair(1, 0, 1))
         " delete spaces inside pair
         let key = "\<BS>\<Del>"
-    elseif s:InPair(0, 0, 1)
-        " inside backslash pair, delete pair and right backslash
-        let key = "\<BS>" . repeat("\<Del>", 2)
-
-        if !empty(b:pendings) && b:pendings[-1] == s:GetChar(0)
-            call remove(b:pendings, -1)
-        endif
     endif
 
     " TODO: implement deletion of all special insertions :(
