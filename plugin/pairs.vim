@@ -371,22 +371,24 @@ function! s:Remap() " {{{
         call add(b:quotes, '$')
     endif
 
+    let map = 'inoremap <silent> <buffer> <expr> '
+
     " initialize pairs
     for left in keys(b:pairs)
         let right = b:pairs[left]
-        exe 'inoremap <buffer> <expr> ' . left . ' <SID>Open("' . left . '")'
-        exe 'inoremap <buffer> <expr> ' . right . ' <SID>Close("' . right . '")'
+        exe map . left . ' <SID>Open("' . left . '")'
+        exe map . right . ' <SID>Close("' . right . '")'
     endfor
 
     " initialize quotes
     for item in b:quotes
         let key = escape(item, '"')
-        exe 'inoremap <buffer> <expr> ' . item . ' <SID>Quote("' . key . '")'
+        exe map . item . ' <SID>Quote("' . key . '")'
     endfor
 
     if g:pairs_include_completion && &filetype =~ s:cpp
-        inoremap <buffer> <expr> < <SID>Open("<")
-        inoremap <buffer> <expr> > <SID>Close(">")
+        exe map . '< <SID>Open("<")'
+        exe map . '> <SID>Close(">")'
     endif
 
     call s:Clear()
