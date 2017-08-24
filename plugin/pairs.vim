@@ -18,8 +18,8 @@ if !exists('g:pairs_latex_interval')
     let g:pairs_latex_interval = 1
 endif
 
-if !exists('g:pairs_include_completion')
-    let g:pairs_include_completion = 1
+if !exists('g:pairs_cpp_angle')
+    let g:pairs_cpp_angle = 1
 endif
 " }}}
 
@@ -99,7 +99,7 @@ function! s:Open(key) " {{{
         " backslash pairs
         let key = a:key . '\' . b:pairs[a:key] . repeat(s:left, 2)
         call add(b:pendings, b:pairs[a:key])
-    elseif g:pairs_class_semicolon && &filetype =~ s:cpp &&
+    elseif g:pairs_class_semicolon && &filetype =~ s:cpp && a:key == '{' &&
                 \ (getline('.') =~ s:class_ins ||
                 \ (getline(line('.') - 1) =~ s:class_ins &&
                 \ getline('.') =~ '^\s*[^{]*$'))
@@ -108,7 +108,7 @@ function! s:Open(key) " {{{
         call add(b:pendings, b:pairs[a:key])
     elseif &filetype =~ s:cpp && a:key == '<'
         " if on an #include line
-        if g:pairs_include_completion && getline('.') =~ '^\s*#include\s*$'
+        if g:pairs_cpp_angle && getline('.') =~ '^\s*\(#include\|template\)\s*$'
             " complete angle brackets
             let key = '<>' . s:left
             call add(b:pendings, '>')
@@ -144,9 +144,10 @@ function! s:Close(key) " {{{
         " in math mode, parentheses and brackets are often paired
         let key = "\<Del>" . a:key
         call remove(b:pendings, -1)
-    elseif g:pairs_include_completion && &filetype =~ s:cpp &&
-                \ a:key == '>' && getline('.') =~ '^\s*#include' &&
-                \ right == '>'
+    elseif g:pairs_cpp_angle && &filetype =~ s:cpp &&
+                \ a:key == '>' &&
+                \ right == '>' &&
+                \ getline('.') =~ '^\s*\(#include\|template\)'
         " close #include
         let key = "\<Del>" . a:key
         call remove(b:pendings, -1)
@@ -300,7 +301,7 @@ function! s:Backspace() " {{{
     let key = "\<BS>"
 
     if s:InPair(0, 1) ||
-                \ g:pairs_include_completion && &filetype =~ s:cpp &&
+                \ g:pairs_cpp_angle && &filetype =~ s:cpp &&
                 \ getline('.') =~ '^\s*#include\s*<>\s*$' &&
                 \ s:GetChar(-1, 2) == '<>'
         if !empty(b:pendings) && b:pendings[-1] == s:GetChar(0)
@@ -386,7 +387,7 @@ function! s:Remap() " {{{
         exe map . item . ' <SID>Quote("' . key . '")'
     endfor
 
-    if g:pairs_include_completion && &filetype =~ s:cpp
+    if g:pairs_cpp_angle && &filetype =~ s:cpp
         exe map . '< <SID>Open("<")'
         exe map . '> <SID>Close(">")'
     endif
