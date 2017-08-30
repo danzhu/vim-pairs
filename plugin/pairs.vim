@@ -264,8 +264,10 @@ function! s:Quote(key) " {{{
         call remove(b:pendings, -1)
     elseif ins
         " inside string, don't insert closing quote
-    elseif left =~ '\h' || right =~ '\h'
-        " ignore when inserting around identifiers
+    elseif right =~ '\h'
+        " ignore when inserting before identifiers
+    elseif left =~ '\h' && (&filetype != 'python' || left =~ '[^rf]')
+        " ignore after identifiers, but not after raw or formatted strings
     elseif s:GetChar(-2) =~ '\h' && left == a:key
         " don't complete pair when left is quote immediately after identifier,
         " otherwise this breaks triple quote line jump
