@@ -34,8 +34,8 @@ endif
 let s:undo  = "\<C-G>u"
 let s:abbr  = "\<C-]>"
 
-let s:class_ins = '\<\(struct\|class\|enum\)\>[^{]*$'
-let s:class_del = '\<\(struct\|class\|enum\)\>'
+let s:class_ins = '\<\(struct\|class\|enum\|union\)\>[^{]*$'
+let s:class_del = '\<\(struct\|class\|enum\|union\)\>'
 let s:cpp = '^\(c\|cpp\)$'
 " }}}
 
@@ -43,9 +43,10 @@ function! s:GetChar(offset, ...) " {{{
     let column = col('.') + a:offset
     let length = a:0 > 0 ? a:1 : 1
 
-    if column < 0
-        let length += column
-        let column = 0
+    " if starting before first column, adjust to a valid column and length
+    if column < 1
+        let length += column - 1
+        let column = 1
     endif
 
     return matchstr(getline('.'), '\%' . column . 'c.\{,' . length . '}')
@@ -68,7 +69,21 @@ function! s:InSyntax(...) " {{{
     return 0
 endfunction " }}}
 
+function! s:IsPair(left, right) " {{{
+    if a:left[0] == '\'
+        " backslash pair
+        return has_key(b:pairs, a:left[1]) &&
+                    \ b:pairs[a:left[1]] == a:right[1] &&
+                    \ a:right[0] == '\'
+    else
+        return has_key(b:pairs, a:left[-1:]) &&
+                    \ b:pairs[a:left[-1:]] == a:right[0]
+    endif
+endfunction " }}}
+
 function! s:InPair(...) " {{{
+    " TODO: this logic / arguments are a hell of mess
+
     let dist      = a:0 > 0 ? a:1 : 0
     let quote     = a:0 > 1 ? a:2 : 0
     let backslash = a:0 > 2 ? a:3 : 0
@@ -283,17 +298,30 @@ function! s:Quote(key) " {{{
 endfunction " }}}
 
 function! s:Enter() " {{{
-    let key = "\<CR>"
+    let key = ''
+    let prevline = getline(line('.') - 1)
 
-    if s:InPair(0, 1) || s:InPair(0, 0, 1) || s:GetChar(-1, 2) == '><'
+    " TODO: html tag / latex begin and end
+    if s:IsPair(prevline[-2:], s:GetChar(0, 2))
         if &filetype == 'vim' && !s:InSyntax('^Comment$')
-            let key = s:undo . "\<CR>\\ \<Up>\<End>\<CR>\\ "
+            let key .= "\\ \<Up>\<End>\<CR>\\ "
         else
-            let key = s:undo . "\<CR>\<Up>\<End>\<CR>"
+            let key .= "\<Up>\<End>\<CR>"
         endif
     elseif &filetype == 'markdown' &&
-                \ getline('.') =~ '^`\{3}' && s:GetChar(0, 4) == '```'
-        let key = s:undo . "\<CR>\<Up>\<End>\<CR>"
+                \ prevline =~ '^`\{3}' &&
+                \ s:GetChar(0, 4) == '```' " length 4 to make sure nothing after
+        let key .= "\<Up>\<End>\<CR>"
+    endif
+
+    return key
+endfunction " }}}
+
+function! s:Space() " {{{
+    let key = ''
+
+    if s:IsPair(s:GetChar(-3, 2), s:GetChar(0, 2))
+        let key .= ' ' . s:left
     endif
 
     return key
@@ -304,10 +332,12 @@ function! s:Backspace() " {{{
 
     if s:InPair(0, 1) ||
                 \ g:pairs_cpp_angle && &filetype =~ s:cpp &&
-                \ getline('.') =~ '^\s*#include\s*<>\s*$' &&
+                \ getline('.') =~ '^\s*\(#include\|template\)\s*<>\s*$' &&
                 \ s:GetChar(-1, 2) == '<>'
+        " normal pair or quote
+
         if !empty(b:pendings) && b:pendings[-1] == s:GetChar(0)
-            let key = "\<BS>\<Del>"
+            let key .= "\<Del>"
 
             " FIXME: this sometimes delete the wrong stuff
             if g:pairs_class_semicolon && s:GetChar(1) == ';' &&
@@ -320,29 +350,21 @@ function! s:Backspace() " {{{
             call remove(b:pendings, -1)
         endif
     elseif s:InPair(0, 0, 1)
+        " backslash pair
+
         if !empty(b:pendings) && b:pendings[-1] == s:GetChar(0)
-            " inside backslash pair, delete pair and right backslash
-            let key = "\<BS>" . repeat("\<Del>", 2)
+            " delete pair and right backslash
+            let key .= repeat("\<Del>", 2)
 
             call remove(b:pendings, -1)
         endif
     elseif s:GetChar(-1, 2) == '  ' &&
                 \ (s:InPair(1, 1) || s:InPair(1, 0, 1))
-        " delete spaces inside pair
-        let key = "\<BS>\<Del>"
+        " spaced pair, delete spaces inside
+        let key .= "\<Del>"
     endif
 
     " TODO: implement deletion of all special insertions :(
-
-    return key
-endfunction " }}}
-
-function! s:Space() " {{{
-    let key = ' '
-
-    if s:InPair() || s:InPair(0, 0, 1)
-        let key = repeat(' ', 2) . s:left
-    endif
 
     return key
 endfunction " }}}
@@ -401,24 +423,51 @@ function! s:Clear() " {{{
     let b:pendings = []
 endfunction " }}}
 
-" Setup mappings {{{
-exe 'imap <script> <CR> ' . maparg('<CR>', 'i') .
-            \ '<C-]><C-R>=<SID>Enter()<CR>'
-exe 'imap <script> <Space> ' . maparg('<Space>', 'i') .
-            \ '<C-]><C-R>=<SID>Space()<CR>'
-exe 'imap <script> <BS> ' . maparg('<BS>', 'i') .
-            \ '<C-R>=<SID>Backspace()<CR>'
-" }}}
+function! s:Map(key, rhs) " {{{
+    let info = maparg(a:key, 'i', 0, 1)
 
-" Autocmd {{{
-augroup pairs
+    if empty(info)
+        " by default, expand abbreviations and insert that key
+        let map = s:abbr . a:key
+    else
+        " add to existing mapping for plugin compatibility
+        let map = info['rhs']
+
+        " expand <Plug>
+        let map = substitute(map,
+                    \ '\(<Plug>\w\+\)',
+                    \ '\=maparg(submatch(1), "i")',
+                    \ 'g')
+        " expand <SID>
+        let map = substitute(map,
+                    \ '<SID>',
+                    \ '<SNR>' . info['sid'] . '_',
+                    \ 'g')
+    endif
+
+    exe 'imap <script> ' . a:key . ' ' . map . '<SID>' . a:rhs
+endfunction " }}}
+
+augroup pairs " {{{
     autocmd!
 
-    autocmd BufWinEnter * call <sid>Remap()
-    autocmd InsertLeave * call <sid>Clear()
+    autocmd BufWinEnter * call <SID>Remap()
+    autocmd InsertLeave * call <SID>Clear()
 
     if has('patch-7.4.786')
-        autocmd OptionSet matchpairs call <sid>Remap()
+        autocmd OptionSet matchpairs call <SID>Remap()
     endif
-augroup END
+augroup END " }}}
+
+" Setup mappings {{{
+inoremap <silent> <SID>Enter <C-R>=<SID>Enter()<CR>
+inoremap <silent> <SID>Space <C-R>=<SID>Space()<CR>
+inoremap <silent> <SID>Backspace <C-R>=<SID>Backspace()<CR>
+
+call s:Map('<CR>', 'Enter')
+call s:Map('<Space>', 'Space')
+
+" compatibility for backspace is impossible,
+" since we need to check before deleting anything
+imap <script> <BS> <SID>Backspace
 " }}}
