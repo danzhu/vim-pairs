@@ -47,6 +47,10 @@ function! s:GetChar(offset, ...) " {{{
     if column < 1
         let length += column - 1
         let column = 1
+
+        if length < 1
+            return ''
+        endif
     endif
 
     return matchstr(getline('.'), '\%' . column . 'c.\{,' . length . '}')
